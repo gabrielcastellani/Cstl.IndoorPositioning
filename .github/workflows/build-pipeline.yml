@@ -30,9 +30,7 @@ jobs:
       run: dotnet test Cstl.IndoorPositioning.sln --no-build --configuration Release --logger "trx;LogFileName=results.trx"
 
     - name: Publish Test Results
-      uses: dorny/tests-reporter@v1
+      uses: EnricoMi/publish-unit-test-result-action@v2
       if: always()
       with:
-        name: xUnit Tests
-        path: "**/results.trx"
-        reporter: dotnet-trx
+        files: "**/results.trx"
