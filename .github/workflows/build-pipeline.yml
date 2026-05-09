@@ -21,13 +21,13 @@ jobs:
         dotnet-version: 8.0.x
     
     - name: Restore
-      run: dotnet restore Cstl.IndoorPositioning.sln
+      run: dotnet restore Cstl.IndoorPositioning.slnx
       
     - name: Build
-      run: dotnet build Cstl.IndoorPositioning.sln --no-restore --configuration Release
+      run: dotnet build Cstl.IndoorPositioning.slnx --no-restore --configuration Release
       
     - name: Test
-      run: dotnet test Cstl.IndoorPositioning.sln --no-build --configuration Release --logger "trx;LogFileName=results.trx"
+      run: dotnet test Cstl.IndoorPositioning.slnx --no-build --configuration Release --logger "trx;LogFileName=results.trx"
 
     - name: Publish Test Results
       uses: EnricoMi/publish-unit-test-result-action@v2
