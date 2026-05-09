@@ -1,1 +1,9 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cstl.IndoorPositioning.Abstractions/Cstl.IndoorPositioning.Abstractions.csproj" />
+    <Project Path="src/Cstl.IndoorPositioning/Cstl.IndoorPositioning.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Cstl.IndoorPositioning.Tests/Cstl.IndoorPositioning.Tests.csproj" Id="4cdbcd7f-36cb-4760-95fb-2248a6636db1" />
+  </Folder>
+</Solution>
