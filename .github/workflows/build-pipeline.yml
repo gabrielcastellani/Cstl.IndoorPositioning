@@ -1,0 +1,38 @@
+name: Build-Pipeline
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+    
+    - name: Restore
+      run: dotnet restore Cstl.IndoorPositioning.sln
+      
+    - name: Build
+      run: dotnet build Cstl.IndoorPositioning.sln --no-restore --configuration Release
+      
+    - name: Test
+      run: dotnet test Cstl.IndoorPositioning.sln --no-build --configuration Release --logger "trx;LogFileName=results.trx"
+
+    - name: Publish Test Results
+      uses: dorny/tests-reporter@v1
+      if: always()
+      with:
+        name: xUnit Tests
+        path: "**/results.trx"
+        reporter: dotnet-trx
