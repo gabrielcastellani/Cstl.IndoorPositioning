@@ -5,4 +5,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Cstl.IndoorPositioning.Abstractions\Cstl.IndoorPositioning.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>
