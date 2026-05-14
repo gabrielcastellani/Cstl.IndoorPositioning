@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Cstl.IndoorPositioning.Abstractions/Cstl.IndoorPositioning.Abstractions.csproj" />
+    <Project Path="src/Cstl.IndoorPositioning.Web/Cstl.IndoorPositioning.Web.csproj" Id="683057de-daa2-4c16-bc75-f4e9534b2cb9" />
     <Project Path="src/Cstl.IndoorPositioning/Cstl.IndoorPositioning.csproj" />
   </Folder>
   <Folder Name="/tests/">

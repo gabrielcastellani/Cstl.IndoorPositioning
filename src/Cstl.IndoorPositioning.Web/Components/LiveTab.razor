@@ -1,0 +1,187 @@
+﻿@using Cstl.IndoorPositioning.Abstractions.Models
+@using Cstl.IndoorPositioning.Web.Services
+@inject PositioningState State
+@implements IDisposable
+
+<div class="section-title">Live Readings</div>
+<div class="hint-text">
+    Paste a JSON array of <code>BeaconReading</code> objects and click Run.
+    Only MACs matching anchors in the Beacons tab are used.
+</div>
+
+<div class="form-group">
+    <label>JSON Input</label>
+    <textarea rows="8" @bind="JsonInput" placeholder='[{"MAC":"AA:BB:CC:DD:EE:01","RSSI":-65,"TxPower":-59}]'></textarea>
+</div>
+
+@if (!string.IsNullOrEmpty(ParseError))
+{
+    <div class="error-msg">@ParseError</div>
+}
+
+<button class="btn-primary full" @onclick="RunLive">▶ Run positioning</button>
+<button class="btn-secondary full" style="margin-top:6px" @onclick="LoadExample">Load example</button>
+
+@if (State.LastResult is not null && State.LiveMode)
+{
+    <div class="live-result">
+        <div class="live-result-title">Result</div>
+        <div class="result-row">
+            <span class="result-label">Latitude</span>
+            <span class="result-value">@State.LastResult.Latitude.ToString("F7")</span>
+        </div>
+        <div class="result-row">
+            <span class="result-label">Longitude</span>
+            <span class="result-value">@State.LastResult.Longitude.ToString("F7")</span>
+        </div>
+        <div class="result-row">
+            <span class="result-label">Method</span>
+            <span class="result-value accent">@State.LastResult.Method</span>
+        </div>
+        <div class="result-row">
+            <span class="result-label">Beacons used</span>
+            <span class="result-value">@State.LastResult.BeaconsUsed</span>
+        </div>
+    </div>
+}
+
+@code {
+    private string JsonInput  { get; set; } = string.Empty;
+    private string ParseError { get; set; } = string.Empty;
+
+    protected override void OnInitialized() => State.OnChanged += Refresh;
+    public void Dispose() => State.OnChanged -= Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void RunLive()
+    {
+        ParseError = string.Empty;
+        State.LiveMode = true;
+
+        try
+        {
+            var readings = System.Text.Json.JsonSerializer.Deserialize<List<BeaconReadingDto>>(JsonInput,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (readings is null || readings.Count == 0)
+            { ParseError = "No readings parsed. Check your JSON."; return; }
+
+            var mapped = readings.Select(r => new BeaconReading
+            {
+                MAC     = r.MAC ?? string.Empty,
+                RSSI    = r.RSSI,
+                TxPower = r.TxPower
+            });
+
+            var result = State.RecalculateFromReadings(mapped);
+            if (result is null)
+                ParseError = "None of the MACs match a known anchor. Add anchors in the Beacons tab.";
+        }
+        catch (Exception ex)
+        {
+            ParseError = $"Invalid JSON: {ex.Message}";
+        }
+    }
+
+    private void LoadExample()
+    {
+        var anchors = State.Beacons.Take(3).ToList();
+        if (!anchors.Any())
+        {
+            ParseError = "Add anchors in the Beacons tab first, then load example.";
+            return;
+        }
+
+        var list = anchors.Select(a => new { MAC = a.MAC, RSSI = a.RSSI, TxPower = a.TxPower });
+        JsonInput  = System.Text.Json.JsonSerializer.Serialize(list,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        ParseError = string.Empty;
+    }
+
+    private sealed class BeaconReadingDto
+    {
+        public string? MAC { get; set; }
+        public int RSSI { get; set; }
+        public int TxPower { get; set; } = -59;
+    }
+}
+
+<style>
+    .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+    }
+
+    .hint-text { font-size: 11px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.6; }
+    .hint-text code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
+
+    .form-group { margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+    textarea {
+        resize: vertical;
+        padding: 8px 10px;
+        line-height: 1.5;
+        font-size: 11px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+    }
+
+    .error-msg { color: var(--danger); font-size: 12px; margin-bottom: 6px; }
+
+    .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        padding: 8px 16px;
+        font-weight: 600;
+        width: 100%;
+        margin-top: 4px;
+    }
+
+    .btn-primary:hover { background: #2563eb; }
+
+    .btn-secondary {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 7px 16px;
+        font-weight: 500;
+        width: 100%;
+    }
+
+    .btn-secondary:hover { background: var(--border); color: var(--text); }
+
+    .full { width: 100%; }
+
+    .live-result {
+        margin-top: 16px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px;
+    }
+
+    .live-result-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+
+    .result-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+    }
+
+    .result-label { color: var(--text-muted); font-size: 11px; }
+    .result-value { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .result-value.accent { color: var(--accent2); }
+</style>

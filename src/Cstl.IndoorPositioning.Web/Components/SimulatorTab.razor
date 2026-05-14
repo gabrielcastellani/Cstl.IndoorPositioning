@@ -1,0 +1,172 @@
+﻿@inject PositioningState State
+@implements IDisposable
+
+@if (!State.Beacons.Any())
+{
+    <div class="empty-state">
+        <div class="empty-icon">📡</div>
+        <div>Add beacons in the Beacons tab first.</div>
+    </div>
+}
+else
+{
+    <div class="section-title">RSSI Simulator</div>
+    <div class="hint-text">Drag each slider to simulate signal strength. The map updates in real time.</div>
+
+    @foreach (var b in State.Beacons.Where(b => b.Active))
+    {
+        <div class="sim-card">
+            <div class="sim-header">
+                <div>
+                    <div class="sim-name">@(string.IsNullOrEmpty(b.Label) ? b.MAC : b.Label)</div>
+                    <div class="sim-mac">@b.MAC</div>
+                </div>
+                <div class="sim-dist-badge">@b.EstimatedDistanceMeters.ToString("F1") m</div>
+            </div>
+
+            <div class="slider-row">
+                <span class="slider-label">RSSI</span>
+                <input type="range" min="-100" max="-30"
+                       value="@b.RSSI"
+                       @oninput="(e) => OnRssiChanged(b.MAC, e)" />
+                <span class="slider-value">@b.RSSI dBm</span>
+            </div>
+
+            <div class="signal-bar">
+                <div class="signal-fill" style="width:@SignalPercent(b.RSSI)%;background:@SignalColor(b.RSSI)"></div>
+            </div>
+        </div>
+    }
+
+    @if (State.Beacons.Any(b => !b.Active))
+    {
+        <div class="hint-text" style="margin-top:8px">
+            @State.Beacons.Count(b => !b.Active) inactive beacon(s) hidden. Enable them in Beacons tab.
+        </div>
+    }
+}
+
+@code {
+    protected override void OnInitialized() => State.OnChanged += Refresh;
+    public void Dispose() => State.OnChanged -= Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnRssiChanged(string mac, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var rssi))
+        {
+            State.UpdateBeaconRssi(mac, rssi);
+            State.Recalculate();
+        }
+    }
+
+    private static double SignalPercent(int rssi)
+        => Math.Max(0, Math.Min(100, (rssi + 100) / 70.0 * 100));
+
+    private static string SignalColor(int rssi) => rssi switch
+    {
+        > -60  => "#22c55e",
+        > -75  => "#f59e0b",
+        _      => "#ef4444"
+    };
+}
+
+<style>
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 40px 0;
+        color: var(--text-muted);
+        font-size: 13px;
+    }
+
+    .empty-icon { font-size: 36px; }
+
+    .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+    }
+
+    .hint-text { font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
+
+    .sim-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 12px;
+        margin-bottom: 8px;
+    }
+
+    .sim-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .sim-name { font-weight: 600; font-size: 13px; }
+    .sim-mac  { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+
+    .sim-dist-badge {
+        background: var(--accent);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 12px;
+    }
+
+    .slider-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
+    .slider-label { font-size: 10px; color: var(--text-muted); min-width: 28px; }
+    .slider-value { font-size: 11px; font-weight: 600; min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    input[type=range] {
+        flex: 1;
+        background: transparent;
+        border: none;
+        -webkit-appearance: none;
+        height: 4px;
+        padding: 0;
+    }
+
+    input[type=range]::-webkit-slider-runnable-track {
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        margin-top: -5px;
+        cursor: pointer;
+        border: 2px solid var(--surface2);
+    }
+
+    .signal-bar {
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .signal-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width .1s, background .1s;
+    }
+</style>

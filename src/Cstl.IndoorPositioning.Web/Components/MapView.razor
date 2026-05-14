@@ -1,0 +1,174 @@
+﻿@using Cstl.IndoorPositioning.Web.Services
+@inject PositioningState State
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div id="map-container" style="flex:1;position:relative;">
+    <div id="leaflet-map" style="width:100%;height:100%;"></div>
+
+    @if (State.LastResult is not null)
+    {
+        <div class="map-result-badge">
+            <span class="method-tag @State.LastResult.Method.ToString().ToLower()">@State.LastResult.Method</span>
+            <span class="coords">
+                @State.LastResult.Latitude.ToString("F6"), @State.LastResult.Longitude.ToString("F6")
+            </span>
+            <span class="beacons-used">@State.LastResult.BeaconsUsed beacon@(State.LastResult.BeaconsUsed != 1 ? "s" : "")</span>
+        </div>
+    }
+
+    <div class="map-hint">Click the map to place a beacon</div>
+</div>
+
+@code {
+    private DotNetObjectReference<MapView>? _dotNetRef;
+    private bool _mapReady = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("LeafletInterop.init",
+                "leaflet-map",
+                State.MapCenterLat,
+                State.MapCenterLon,
+                State.MapZoom,
+                _dotNetRef);
+            _mapReady = true;
+            await SyncAllBeacons();
+            await SyncDevicePosition();
+            State.OnChanged += OnStateChanged;
+        }
+    }
+
+    private void OnStateChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            await SyncAllBeacons();
+            await SyncDevicePosition();
+            StateHasChanged();
+        });
+    }
+
+    private async Task SyncAllBeacons()
+    {
+        if (!_mapReady) return;
+        foreach (var b in State.Beacons)
+        {
+            await JS.InvokeVoidAsync("LeafletInterop.upsertBeacon",
+                b.MAC, b.Latitude, b.Longitude, b.Label, b.Active);
+        }
+    }
+
+    private async Task SyncDevicePosition()
+    {
+        if (!_mapReady) return;
+        try
+        {
+            if (State.LastResult is null)
+            {
+                await JS.InvokeVoidAsync("LeafletInterop.clearDevicePosition");
+                return;
+            }
+
+            await JS.InvokeVoidAsync("LeafletInterop.setDevicePosition",
+                State.LastResult.Latitude,
+                State.LastResult.Longitude,
+                State.LastResult.AccuracyMeters);
+
+            await JS.InvokeVoidAsync("LeafletInterop.panToDevice",
+                State.LastResult.Latitude,
+                State.LastResult.Longitude);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[MapView] SyncDevicePosition error: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public void OnMapClick(double lat, double lon)
+    {
+        PendingMapClick?.Invoke(lat, lon);
+    }
+
+    [JSInvokable]
+    public void OnBeaconDragged(string mac, double lat, double lon)
+    {
+        State.UpdateBeaconPosition(mac, lat, lon);
+        State.Recalculate();
+    }
+
+    [JSInvokable]
+    public void OnBeaconClicked(string mac)
+    {
+        BeaconClicked?.Invoke(mac);
+    }
+
+    public static event Action<double, double>? PendingMapClick;
+    public static event Action<string>? BeaconClicked;
+
+    public async ValueTask DisposeAsync()
+    {
+        State.OnChanged -= OnStateChanged;
+        _dotNetRef?.Dispose();
+        await Task.CompletedTask;
+    }
+}
+
+<style>
+    #map-container {
+        position: relative;
+    }
+
+    .map-result-badge {
+        position: absolute;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 1000;
+        box-shadow: 0 4px 24px rgba(0,0,0,.5);
+        font-size: 12px;
+        backdrop-filter: blur(8px);
+    }
+
+    .method-tag {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+    .method-tag.proximity  { background: #f59e0b22; color: #f59e0b; }
+    .method-tag.bilateration { background: #8b5cf622; color: #a78bfa; }
+    .method-tag.trilateration { background: #22c55e22; color: #22c55e; }
+
+    .coords { color: var(--text); font-weight: 500; font-size: 13px; letter-spacing: .02em; }
+    .beacons-used { color: var(--text-muted); font-size: 11px; }
+
+    .map-hint {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 5px 14px;
+        font-size: 11px;
+        color: var(--text-muted);
+        z-index: 1000;
+        pointer-events: none;
+        white-space: nowrap;
+    }
+</style>
