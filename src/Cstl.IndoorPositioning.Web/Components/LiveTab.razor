@@ -66,12 +66,11 @@
             if (readings is null || readings.Count == 0)
             { ParseError = "No readings parsed. Check your JSON."; return; }
 
-            var mapped = readings.Select(r => new BeaconReading
-            {
-                MAC     = r.MAC ?? string.Empty,
-                RSSI    = r.RSSI,
-                TxPower = r.TxPower
-            });
+            var mapped = readings.Select(r => new BeaconReading(
+                r.MAC ?? string.Empty,
+                r.RSSI,
+                r.TxPower
+            ));
 
             var result = State.RecalculateFromReadings(mapped);
             if (result is null)

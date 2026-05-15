@@ -65,13 +65,15 @@ namespace Cstl.IndoorPositioning.Web.Services
                 return null;
             }
 
-            var samples = active.Select(b => new BeaconSample
-            {
-                MAC = b.MAC,
-                Latitude = b.Latitude,
-                Longitude = b.Longitude,
-                EstimatedDistanceMeters = b.EstimatedDistanceMeters
-            }).ToArray();
+            // Use the convenience string constructor: (mac, lat, lon, rssi, txPower, distMeters)
+            var samples = active.Select(b => new BeaconSample(
+                b.MAC,
+                b.Latitude,
+                b.Longitude,
+                b.RSSI,
+                b.TxPower,
+                b.EstimatedDistanceMeters
+            )).ToArray();
 
             LastResult = TrilaterationEngine.Estimate(samples);
             NotifyChanged();
@@ -83,17 +85,18 @@ namespace Cstl.IndoorPositioning.Web.Services
             var anchors = Beacons.ToDictionary(b => b.MAC.ToUpperInvariant());
 
             var samples = readings
-                .Where(r => anchors.ContainsKey(r.MAC.ToUpperInvariant()))
+                .Where(r => anchors.ContainsKey(r.Mac.Value.ToUpperInvariant()))
                 .Select(r =>
                 {
-                    var anchor = anchors[r.MAC.ToUpperInvariant()];
-                    return new BeaconSample
-                    {
-                        MAC = r.MAC,
-                        Latitude = anchor.Latitude,
-                        Longitude = anchor.Longitude,
-                        EstimatedDistanceMeters = BeaconDistanceCalculator.Calculate(r.RSSI, r.TxPower)
-                    };
+                    var anchor = anchors[r.Mac.Value.ToUpperInvariant()];
+                    return new BeaconSample(
+                        r.Mac.Value,
+                        anchor.Latitude,
+                        anchor.Longitude,
+                        r.Rssi,
+                        r.TxPower ?? 0,
+                        BeaconDistanceCalculator.Calculate(r.Rssi, r.TxPower)
+                    );
                 })
                 .ToArray();
 
