@@ -1,38 +1,50 @@
-﻿using System;
+﻿using Cstl.IndoorPositioning.Abstractions.Enums;
+using Cstl.IndoorPositioning.Abstractions.Extensions;
+using Cstl.IndoorPositioning.Algorithms.Distance;
 
 namespace Cstl.IndoorPositioning
 {
+    /// <summary>
+    /// Static convenience facade for BLE RSSI distance calculations.
+    /// </summary>
     public static class BeaconDistanceCalculator
     {
-        public const double DefaultPathLossExponent = 3.0;
-        private const double MinimumDistanceMeters = 0.01;
+        /// <summary>Default calibrated TxPower at one meter, in dBm.</summary>
+        public const int DefaultTxPower = LogDistanceBeaconDistanceCalculator.DefaultTxPower;
 
-        public static double Calculate(int rssi, int txPower, double pathLossExponent = DefaultPathLossExponent)
+        /// <summary>Default path-loss exponent for indoor environments.</summary>
+        public const double DefaultPathLossExponent = LogDistanceBeaconDistanceCalculator.DefaultPathLossExponent;
+
+        /// <summary>
+        /// Estimates distance in meters from RSSI.
+        /// </summary>
+        public static double Calculate(int rssi, int? txPower = null, double pathLossExponent = DefaultPathLossExponent)
         {
-            GuardPathLossExponent(pathLossExponent);
-
-            var ratio = (txPower - rssi) / (10.0 * pathLossExponent);
-            return Math.Pow(10.0, ratio);
+            return new LogDistanceBeaconDistanceCalculator(pathLossExponent).CalculateDistance(rssi, txPower);
         }
 
-        public static double DistanceToRssi(double distanceMeters, int txPower, double pathLossExponent = DefaultPathLossExponent)
+        /// <summary>
+        /// Estimates distance in meters from RSSI using an environment profile.
+        /// </summary>
+        public static double Calculate(int rssi, int? txPower, EnvironmentProfile profile)
         {
-            GuardDistanceMeters(distanceMeters);
-            GuardPathLossExponent(pathLossExponent);
-
-            return txPower - (10.0 * pathLossExponent * Math.Log10(distanceMeters));
+            return LogDistanceBeaconDistanceCalculator.ForProfile(profile).CalculateDistance(rssi, txPower);
         }
 
-        private static void GuardPathLossExponent(double pathLossExponent)
+        /// <summary>
+        /// Returns expected RSSI for a known distance.
+        /// </summary>
+        public static double DistanceToRssi(double distanceMeters, int? txPower = null, double pathLossExponent = DefaultPathLossExponent)
         {
-            if (pathLossExponent <= 0)
-                throw new ArgumentOutOfRangeException(nameof(pathLossExponent), "Path loss exponent must be positive.");
+            return new LogDistanceBeaconDistanceCalculator(pathLossExponent).CalculateExpectedRssi(distanceMeters, txPower);
         }
 
-        private static void GuardDistanceMeters(double distanceMeters)
+        /// <summary>
+        /// Returns the suggested path-loss exponent for an environment profile.
+        /// </summary>
+        public static double PathLossExponentFor(EnvironmentProfile profile)
         {
-            if (distanceMeters < MinimumDistanceMeters)
-                throw new ArgumentOutOfRangeException(nameof(distanceMeters), $"Distance must be at least {MinimumDistanceMeters}m.");
+            return profile.ToPathLossExponent();
         }
     }
 }

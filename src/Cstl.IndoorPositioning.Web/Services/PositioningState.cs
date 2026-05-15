@@ -56,7 +56,14 @@ namespace Cstl.IndoorPositioning.Web.Services
         public TrilaterationResult? Recalculate()
         {
             var active = Beacons.Where(b => b.Active).ToList();
-            if (active.Count == 0) { LastResult = null; NotifyChanged(); return null; }
+
+            if (active.Count == 0)
+            {
+                LastResult = null;
+                NotifyChanged();
+
+                return null;
+            }
 
             var samples = active.Select(b => new BeaconSample
             {

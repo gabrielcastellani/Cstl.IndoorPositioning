@@ -1,16 +1,19 @@
 ﻿using Cstl.IndoorPositioning.Abstractions.Enums;
 using Cstl.IndoorPositioning.Abstractions.Models;
+using Cstl.IndoorPositioning.Algorithms;
 
 namespace Cstl.IndoorPositioning.Tests
 {
     /// <summary>
-    /// Unit tests for <see cref="TrilaterationEngine" />.
+    /// Unit tests for <see cref="WeightedLeastSquaresPositionEstimator" />.
     /// </summary>
-    public sealed class TrilaterationEngineTests
+    public sealed class WlsPositionEstimatorTests
     {
+        private readonly WeightedLeastSquaresPositionEstimator _estimator = new();
+
         private static BeaconSample MakeSample(double latitude, double longitude, int rssi, int txPower = -59)
         {
-            var distance = BeaconDistanceCalculator.Calculate(rssi, txPower);
+            var distance = BeaconDistanceCalculator.Calculate(rssi, txPower == 0 ? null : txPower);
             return new BeaconSample(
                 NewMac(),
                 latitude,
@@ -37,25 +40,25 @@ namespace Cstl.IndoorPositioning.Tests
         }
 
         [Fact]
-        public void Estimate_OneBeacon_ReturnsBeaconPosition()
+        public void Estimate_OneBeacon_ReturnsProximityAtBeaconPosition()
         {
-            var beacon = MakeSample(-23.5505, -46.6333, rssi: -60);
+            var sample = MakeSample(-23.5505, -46.6333, rssi: -60);
 
-            var result = TrilaterationEngine.Estimate(new[] { beacon });
+            var result = _estimator.Estimate(new[] { sample });
 
             Assert.Equal(EstimationMethod.Proximity, result.Method);
-            Assert.Equal(beacon.Latitude, result.Latitude);
-            Assert.Equal(beacon.Longitude, result.Longitude);
             Assert.Equal(1, result.BeaconsUsed);
+            Assert.Equal(sample.Latitude, result.Latitude);
+            Assert.Equal(sample.Longitude, result.Longitude);
         }
 
         [Fact]
-        public void Estimate_TwoBeacons_ReturnsBilaterationMethod()
+        public void Estimate_TwoBeaconsEqualRssi_ReturnsMidpoint()
         {
             var first = MakeSample(-23.5505, -46.6333, rssi: -60);
             var second = MakeSample(-23.5505, -46.6320, rssi: -60);
 
-            var result = TrilaterationEngine.Estimate(new[] { first, second });
+            var result = _estimator.Estimate(new[] { first, second });
 
             Assert.Equal(EstimationMethod.Bilateration, result.Method);
             Assert.Equal(2, result.BeaconsUsed);
@@ -69,15 +72,15 @@ namespace Cstl.IndoorPositioning.Tests
             var weak = MakeSample(-23.5505, -46.6333, rssi: -80);
             var strong = MakeSample(-23.5505, -46.6320, rssi: -40);
 
-            var result = TrilaterationEngine.Estimate(new[] { weak, strong });
+            var result = _estimator.Estimate(new[] { weak, strong });
 
             var distanceToStrong = Math.Abs(result.Longitude - strong.Longitude);
             var distanceToWeak = Math.Abs(result.Longitude - weak.Longitude);
-            Assert.True(distanceToStrong < distanceToWeak, "Stronger-RSSI beacon must carry more weight.");
+            Assert.True(distanceToStrong < distanceToWeak, "Beacon with stronger RSSI must carry more weight.");
         }
 
         [Fact]
-        public void Estimate_ThreeBeacons_ReturnsTrilaterationMethod()
+        public void Estimate_ThreeBeacons_ReturnsTrilaterationWithinTolerance()
         {
             const double targetLatitude = -23.5505;
             const double targetLongitude = -46.6326;
@@ -89,13 +92,11 @@ namespace Cstl.IndoorPositioning.Tests
             MakeSampleAtDistance(-23.5495, -46.6326, HaversineMeters(-23.5495, -46.6326, targetLatitude, targetLongitude))
         };
 
-            var result = TrilaterationEngine.Estimate(samples);
+            var result = _estimator.Estimate(samples);
 
             Assert.Equal(EstimationMethod.Trilateration, result.Method);
             Assert.Equal(3, result.BeaconsUsed);
-
-            var errorMeters = HaversineMeters(result.Latitude, result.Longitude, targetLatitude, targetLongitude);
-            Assert.True(errorMeters < 5.0, $"Error {errorMeters:F2} m — expected < 5 m.");
+            Assert.True(HaversineMeters(result.Latitude, result.Longitude, targetLatitude, targetLongitude) < 5.0);
         }
 
         [Fact]
@@ -112,24 +113,22 @@ namespace Cstl.IndoorPositioning.Tests
             MakeSampleAtDistance(-23.5515, -46.6326, HaversineMeters(-23.5515, -46.6326, targetLatitude, targetLongitude))
         };
 
-            var result = TrilaterationEngine.Estimate(samples);
+            var result = _estimator.Estimate(samples);
 
             Assert.Equal(EstimationMethod.Trilateration, result.Method);
             Assert.Equal(4, result.BeaconsUsed);
-
-            var errorMeters = HaversineMeters(result.Latitude, result.Longitude, targetLatitude, targetLongitude);
-            Assert.True(errorMeters < 5.0, $"Error {errorMeters:F2} m — expected < 5 m.");
+            Assert.True(HaversineMeters(result.Latitude, result.Longitude, targetLatitude, targetLongitude) < 5.0);
         }
 
         [Fact]
-        public void Estimate_RssiWeighting_StrongestBeaconPullsResultCloser()
+        public void Estimate_StrongRssiBeaconPullsResultCloser()
         {
             var strong = MakeSample(-23.5500, -46.6326, rssi: -45);
             var weak1 = MakeSample(-23.5510, -46.6333, rssi: -75);
             var weak2 = MakeSample(-23.5510, -46.6320, rssi: -75);
             var weak3 = MakeSample(-23.5495, -46.6310, rssi: -75);
 
-            var result = TrilaterationEngine.Estimate(new[] { strong, weak1, weak2, weak3 });
+            var result = _estimator.Estimate(new[] { strong, weak1, weak2, weak3 });
 
             var distanceToStrong = HaversineMeters(result.Latitude, result.Longitude, strong.Latitude, strong.Longitude);
             var centroidLatitude = (strong.Latitude + weak1.Latitude + weak2.Latitude + weak3.Latitude) / 4.0;
@@ -138,7 +137,20 @@ namespace Cstl.IndoorPositioning.Tests
 
             Assert.True(
                 distanceToStrong < distanceToCentroid,
-                $"Expected result closer to strong beacon ({distanceToStrong:F1}m) than to centroid ({distanceToCentroid:F1}m).");
+                $"Result ({distanceToStrong:F1}m from strong beacon) should be closer to strong beacon than centroid ({distanceToCentroid:F1}m).");
+        }
+
+        [Fact]
+        public void Estimate_CollinearBeacons_FallsBackToWeightedCentroid()
+        {
+            var first = MakeSample(-23.5505, -46.6333, rssi: -65);
+            var second = MakeSample(-23.5505, -46.6320, rssi: -65);
+            var third = MakeSample(-23.5505, -46.6310, rssi: -65);
+
+            var result = _estimator.Estimate(new[] { first, second, third });
+
+            Assert.Equal(EstimationMethod.WeightedCentroid, result.Method);
+            Assert.Equal(3, result.BeaconsUsed);
         }
 
         [Fact]
@@ -151,36 +163,16 @@ namespace Cstl.IndoorPositioning.Tests
             var centroidLatitude = (first.Latitude + second.Latitude + third.Latitude) / 3.0;
             var centroidLongitude = (first.Longitude + second.Longitude + third.Longitude) / 3.0;
 
-            var result = TrilaterationEngine.Estimate(new[] { first, second, third });
-
+            var result = _estimator.Estimate(new[] { first, second, third });
             var errorMeters = HaversineMeters(result.Latitude, result.Longitude, centroidLatitude, centroidLongitude);
-            Assert.True(errorMeters < 20.0, $"Expected result near centroid, got {errorMeters:F2} m away.");
-        }
 
-        [Fact]
-        public void Estimate_MissingTxPower_UsesDefaultDistanceInSample()
-        {
-            var beacon = new BeaconSample(
-                "AA:BB:CC:DD:EE:FF",
-                -23.5505,
-                -46.6333,
-                rssi: -65,
-                txPower: 0,
-                estimatedDistanceMeters: BeaconDistanceCalculator.Calculate(-65, null));
-
-            var result = TrilaterationEngine.Estimate(new[] { beacon });
-
-            Assert.Equal(EstimationMethod.Proximity, result.Method);
-            Assert.Equal(beacon.Latitude, result.Latitude);
-            Assert.Equal(beacon.Longitude, result.Longitude);
-            Assert.Null(beacon.TxPower);
+            Assert.True(errorMeters < 20.0, $"Expected result near centroid; error = {errorMeters:F2} m.");
         }
 
         [Fact]
         public void Estimate_EmptyList_Throws()
         {
-            Assert.Throws<ArgumentException>(() =>
-                TrilaterationEngine.Estimate(Array.Empty<BeaconSample>()));
+            Assert.Throws<ArgumentException>(() => _estimator.Estimate(Array.Empty<BeaconSample>()));
         }
 
         private static string NewMac() => Guid.NewGuid().ToString("N")[..12];
